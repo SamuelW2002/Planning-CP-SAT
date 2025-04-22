@@ -74,76 +74,43 @@ def add_no_overlap_constraint(model_data, machine_task_intervals, machine_id, lo
         model_data.model.AddNoOverlap(all_intervals_on_machine).WithName(f'no_overlap_machine_{machine_id}')
         logger.info("Applied No Overlap Constraint")
 
-
-# Rename the function to reflect its actual purpose
 def add_subserie_swap_window_constraints(model_data, machine_id, logger):
-    """
-    Adds constraints to ensure each subserie swap interval for this machine
-    STARTS within the allowed time domain (e.g., 6 AM - 1 PM weekdays).
-    """
     logger.info(f"Adding start time constraints for subserie swaps on machine {machine_id} to allowed window.")
 
-    # 1. Get the pre-calculated allowed domain
-    #    Make sure calculate_allowed_prep_range_sub_swap was called BEFORE this.
     if not hasattr(model_data, 'allowed_subserie_swap_domain'):
         logger.error(f"FATAL: model_data.allowed_subserie_swap_domain not found. Cannot apply swap window constraints.")
-        # You might want to raise an error here or handle it appropriately
         return
     if model_data.allowed_subserie_swap_domain is None:
          logger.error(f"FATAL: model_data.allowed_subserie_swap_domain is None. Cannot apply swap window constraints.")
          return
 
     allowed_domain = model_data.allowed_subserie_swap_domain
-    # Optional: Log the domain being used for verification
-    # logger.debug(f"Using allowed domain for machine {machine_id}: {allowed_domain}")
-
-    # 2. Identify the relevant swap intervals for *this* machine.
-    #    Based on your previous code, it seems model_data.subserie_swap_intervals_machine
-    #    is populated specifically for the current machine before this function is called.
-    #    If not, you would need to filter a global list here.
     intervals_to_constrain = model_data.subserie_swap_intervals_machine
 
     if not intervals_to_constrain:
         logger.info(f"No subserie swap intervals found for machine {machine_id} in this pass.")
-        # It's crucial to clear the list even if empty, assuming it's rebuilt per machine
         model_data.subserie_swap_intervals_machine.clear()
         return
 
     logger.info(f"Found {len(intervals_to_constrain)} subserie swap intervals to constrain for machine {machine_id}.")
 
-    # 3. Loop and apply the constraint to each swap interval's START time
     constrained_count = 0
     for swap_interval in intervals_to_constrain:
-        # Perform a check to ensure it's a valid interval object expected by CP-SAT
-        # (You might need to adjust this check based on what's actually stored in the list)
         if hasattr(swap_interval, 'StartExpr'):
             start_var = swap_interval.StartExpr()
-
-            # --- Convert Domain to list of allowed assignments ---
-            # The Domain object can represent multiple intervals like [1, 5], [10, 12]
-            # We need to create a list of tuples [(1,), (2,), (3,), (4,), (5,), (10,), (11,), (12,)]
-            # Note: This can be memory-intensive if the domain is HUGE, but often fine.
-
-            # Get the flattened list of integers in the domain
             allowed_values = allowed_domain.FlattenedIntervals() # Gets [lb1, ub1, lb2, ub2, ...]
             allowed_assignments_list = []
-            # Check if flattened list is not empty
             if allowed_values:
-                 # Iterate through the pairs (lb, ub)
                  for i in range(0, len(allowed_values), 2):
                      lb = allowed_values[i]
                      ub = allowed_values[i] # Corrected index to ub
-                     # Generate single-value tuples for the range
                      for val in range(lb, ub + 1):
                          allowed_assignments_list.append((val,)) # Must be a tuple
 
-            # Only add constraint if there are allowed assignments
             if allowed_assignments_list:
-                 # --- THE CORE CONSTRAINT (Using AddAllowedAssignments) ---
                  model_data.model.AddAllowedAssignments([start_var], allowed_assignments_list).WithName(f"swap_start_in_window_{machine_id}_{swap_interval.Name()}")
                  constrained_count += 1
             else:
-                 # This case means the allowed_domain was effectively empty or invalid
                  logger.warning(f"Allowed domain resulted in empty assignment list for {swap_interval.Name()} on machine {machine_id}. No constraint added (task may become infeasible).")
 
         else:
@@ -151,5 +118,4 @@ def add_subserie_swap_window_constraints(model_data, machine_id, logger):
 
     logger.info(f"Applied start time domain constraints to {constrained_count} swap intervals for machine {machine_id}.")
 
-    # 4. Clear the machine-specific list (assuming it's populated fresh for the next machine)
     model_data.subserie_swap_intervals_machine.clear()
