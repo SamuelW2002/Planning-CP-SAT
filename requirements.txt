@@ -1,0 +1,7 @@
+pandas
+requests
+pymongo
+ortools
+fastapi
+uvicorn
+sortedcontainers
